@@ -209,8 +209,7 @@ app.put('/candidate-meta', async (req, res) => {
   }
 });
 
-// -------------------- Votar (simple) --------------------
-// body: { dni, fingerprint, candidateId }
+// Votar
 app.post('/vote', async (req, res) => {
   try {
     const { dni, fingerprint, candidateId } = req.body || {};
@@ -220,13 +219,11 @@ app.post('/vote', async (req, res) => {
       return res.status(400).send('dni, fingerprint y candidateId requeridos');
     }
 
-    // 0) Sanity: contrato vivo
     const code = await provider.getCode(voting.address);
     if (!code || code === '0x') {
       return res.status(500).send(`No hay contrato en ${voting.address} sobre ${PROVIDER_URL}`);
     }
 
-    // 1) Verificación biométrica (RNP-mock) y obtención del salt
     const vr = await fetch(`${RNP_URL}/verify`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dni, fingerprint })
@@ -236,7 +233,6 @@ app.post('/vote', async (req, res) => {
     if (!verify.match) return res.status(401).send('Biometría inválida o DNI no habilitado');
     if (!verify.salt) return res.status(502).send('RNP-mock no envió salt');
 
-    // 2) Derivar nulificador por-elección (ciego en on-chain)
     const eId = await getCurrentElectionIdSafe();
     const dniHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(dni));
     // baseNull = keccak256(salt, dniHash)
@@ -250,13 +246,11 @@ app.post('/vote', async (req, res) => {
       [eId, baseNull]
     );
 
-    // (opcional) chequeo on-chain previo
     if (hasFn('hasVoted(uint256,bytes32)')) {
       const used = await voting.hasVoted(eId, nullifier);
       if (used) return res.status(409).send('Ya votaste en esta elección');
     }
 
-    // 3) Enviar la TX con nulificador
     if (!hasFn('voteWithNullifier(bytes32,uint256)')) {
       return res.status(500).send('El contrato no tiene voteWithNullifier(bytes32,uint256). Redeploy y actualiza contract.json');
     }
@@ -264,7 +258,6 @@ app.post('/vote', async (req, res) => {
     const tx = await voting['voteWithNullifier(bytes32,uint256)'](nullifier, Number(candidateId));
     await tx.wait();
 
-    // 4) Registrar participación off-chain (quién votó)
     appendParticipation(dni, tx.hash);
 
     return res.json({ txHash: tx.hash });
@@ -275,7 +268,12 @@ app.post('/vote', async (req, res) => {
   }
 });
 
-// -------------------- Arranque --------------------
+app.post('/vote/:candidateId', async (req, res) => {
+  const { candidateId } = req.params;
+  req.body = { ...(req.body || {}), candidateId: Number(candidateId) };
+  return app._router.handle({ ...req, url: '/vote', method: 'POST' }, res, () => {});
+});
+
 app.listen(PORT, async () => {
   console.log(`Relayer http://localhost:${PORT}`);
   try {
