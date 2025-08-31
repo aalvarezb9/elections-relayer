@@ -23,7 +23,7 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PROVIDER_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 const RELAYER_PRIVATE_KEY = process.env.RELAYER_PK ||
   // ⚠️ Sólo dev: una cuenta del nodo Hardhat
-  "0x689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd";
+  "0xde9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0";
 
 // Cargar ABI+address (generado por tu deploy script)
 const contractCfg = require("./config/contract.json");
@@ -38,6 +38,13 @@ const voting = new ethers.Contract(
   contractCfg.abi,
   wallet
 );
+
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const mapVote = (v) => ({
+  id: Number(v.id ?? v[0]),
+  candidateId: Number(v.candidateId ?? v[1]),
+  timestamp: Number(v.timestamp ?? v[2]), // uint64 -> number
+});
 
 // ---------- Utils ----------
 const toBuf = (hex) => Buffer.from(String(hex || "").replace(/^0x/, ""), "hex");
@@ -420,6 +427,65 @@ app.post("/vote", async (req, res) => {
     res,
     () => {}
   );
+});
+
+app.get("/votes", async (req, res) => {
+  try {
+    const code = await provider.getCode(voting.address);
+    if (!code || code === "0x") return res.status(500).send("No hay contrato desplegado");
+
+    const start = clamp(Number(req.query.start ?? 0), 0, 1e9);
+    const limit = clamp(Number(req.query.limit ?? 50), 0, 1000);
+    const eidQ = req.query.electionId;
+
+    let eidNum;
+    if (eidQ === undefined) {
+      const eId = await getCurrentElectionIdSafe();
+      eidNum = Number(eId || 0);
+      const total = (await voting["getVotesCount()"]()).toNumber();
+      const arr = await voting["getVotesRange(uint256,uint256)"](start, limit);
+      return res.json({
+        electionId: eidNum,
+        start, limit, total,
+        items: arr.map(mapVote),
+      });
+    } else {
+      eidNum = Number(eidQ);
+      if (Number.isNaN(eidNum)) return res.status(400).send("electionId inválido");
+      const total = (await voting["getVotesCount(uint256)"](eidNum)).toNumber();
+      const arr = await voting["getVotesRange(uint256,uint256,uint256)"](eidNum, start, limit);
+      return res.json({
+        electionId: eidNum,
+        start, limit, total,
+        items: arr.map(mapVote),
+      });
+    }
+  } catch (e) {
+    console.error("/votes", e);
+    res.status(500).send(e?.reason || e?.message || "Error");
+  }
+});
+
+app.get("/votes/by-candidate", async (req, res) => {
+  try {
+    const code = await provider.getCode(voting.address);
+    if (!code || code === "0x") return res.status(500).send("No hay contrato desplegado");
+
+    const eid = Number(req.query.electionId);
+    const cid = Number(req.query.candidateId);
+    if (Number.isNaN(eid) || Number.isNaN(cid)) {
+      return res.status(400).send("electionId y candidateId requeridos");
+    }
+    const start = clamp(Number(req.query.start ?? 0), 0, 1e9);
+    const limit = clamp(Number(req.query.limit ?? 50), 0, 1000);
+
+    const total = (await voting["getVotesByCandidateCount(uint256,uint256)"](eid, cid)).toNumber();
+    const arr = await voting["getVotesByCandidateRange(uint256,uint256,uint256,uint256)"](eid, cid, start, limit);
+    res.json({ electionId: eid, candidateId: cid, start, limit, total, items: arr.map(mapVote) });
+  } catch (e) {
+    console.error("/votes/by-candidate", e);
+    res.status(500).send(e?.reason || e?.message || "Error");
+  }
 });
 
 // ---------- Start ----------
