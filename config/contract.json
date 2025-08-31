@@ -21,6 +21,12 @@
           "internalType": "string",
           "name": "name",
           "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "imageURI",
+          "type": "string"
         }
       ],
       "name": "CandidateAdded",
@@ -144,6 +150,11 @@
           "internalType": "string",
           "name": "_name",
           "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_imageURI",
+          "type": "string"
         }
       ],
       "name": "addCandidate",
@@ -246,6 +257,11 @@
               "internalType": "uint256",
               "name": "voteCount",
               "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "imageURI",
+              "type": "string"
             }
           ],
           "internalType": "struct Voting.Candidate[]",
@@ -282,6 +298,11 @@
               "internalType": "uint256",
               "name": "voteCount",
               "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "imageURI",
+              "type": "string"
             }
           ],
           "internalType": "struct Voting.Candidate",
@@ -704,7 +725,7 @@
       "inputs": [
         {
           "internalType": "bytes32",
-          "name": "nullifier",
+          "name": "",
           "type": "bytes32"
         },
         {
@@ -732,19 +753,20 @@
       "inputs": [
         {
           "internalType": "bytes32",
-          "name": "nullifier",
+          "name": "",
           "type": "bytes32"
         },
         {
           "internalType": "uint256",
-          "name": "candidateId",
+          "name": "",
           "type": "uint256"
         }
       ],
       "name": "voteWithNullifier",
       "outputs": [],
-      "stateMutability": "nonpayable",
+      "stateMutability": "pure",
       "type": "function"
     }
-  ]
+  ],
+  "chainId": 31337
 }
